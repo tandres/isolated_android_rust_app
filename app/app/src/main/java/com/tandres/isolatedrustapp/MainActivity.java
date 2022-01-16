@@ -20,6 +20,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String TAG = "IsolatedMain";
     private Handler mHandler = new Handler();
     private IIsolatedRustInterface iIsolatedRustInterface = null;
+    private RustHelloWorld mRustObject = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -27,6 +28,9 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         Log.i(TAG, "Starting");
+
+        mRustObject =  new RustHelloWorld();
+        mRustObject.start();
 
         mHandler.postDelayed(() -> {
             Log.i(TAG, "Binding service");

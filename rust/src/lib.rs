@@ -1,14 +1,20 @@
 use std::{
     io::Read,
-    os::unix::prelude::FromRawFd,
+    os::{
+        raw::c_char,
+        unix::prelude::FromRawFd,
+    },
+    thread, time,
 };
 
 use jni::JNIEnv;
-use jni::objects::{JClass, JString};
+use jni::objects::{JClass, JObject, JString, JValue};
 use jni::sys::{jint, jstring};
 
+pub type Callback = unsafe extern "C" fn(*const c_char) -> ();
+
 #[no_mangle]
-pub extern "C" fn Java_com_tandres_isolatedrustapp_RustHelloWorld_hello(env: JNIEnv, _class: JClass, input: JString, num: jint) -> jstring {
+pub extern "C" fn Java_com_tandres_isolatedrustapp_RustHelloWorld_hello(env: JNIEnv, _class: JClass, input: JString) -> jstring {
     let input: String = env.get_string(input).expect("Couldn't get java string!").into();
 
     let output = env.new_string(format!("Hello, {}!", input)).expect("Couldn't create java string!");
@@ -40,6 +46,41 @@ pub extern "C" fn Java_com_tandres_isolatedrustapp_RustHelloWorld_readFileNative
     file.read_to_string(&mut buf).expect("Failed to read from string!");
 
     env.new_string(buf).expect("Couldn't create java string!").into_inner()
+}
+
+fn log_callback<'a, S, J>(env: &'a JNIEnv, msg: S, callback: J) 
+where
+    S: AsRef<str>,
+    J: Into<JObject<'a>>,
+{
+    let s = format!("Rust: {}", msg.as_ref());
+    let response = env.new_string(&s).expect("Couldn't create java string!");
+    env.call_method(callback, 
+                    "loggingCallback", 
+                    "(Ljava/lang/String;)V", 
+                    &[JValue::from(JObject::from(response))])
+        .unwrap(); 
+}
+
+#[no_mangle]
+#[allow(non_snake_case)]
+pub extern "C" fn Java_com_tandres_isolatedrustapp_RustHelloWorld_spawnThread(
+    env: JNIEnv, 
+    _class: JClass, 
+    callback: JObject,
+) {
+    log_callback(&env, "Starting thread", callback); 
+    let jvm = env.get_java_vm().unwrap();
+
+    let callback = env.new_global_ref(callback).unwrap();
+    thread::spawn(move || {
+        let env = jvm.attach_current_thread().unwrap();
+        let tick = time::Duration::from_millis(1000);
+        loop {
+            thread::sleep(tick);
+            log_callback(&env, "Tick Tock", callback.as_obj());
+        }
+    });
 }
 
 #[cfg(test)]
