@@ -9,6 +9,12 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.IsolatedRustApp">
+        <service
+            android:name=".IsolatedRustService"
+            android:enabled="true"
+            android:exported="false"
+            android:isolatedProcess="true"></service>
+
         <activity
             android:name=".MainActivity"
             android:exported="true">

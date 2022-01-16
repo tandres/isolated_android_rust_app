@@ -3,7 +3,7 @@ package com.tandres.isolatedrustapp;
 import android.util.Log;
 
 public class RustHelloWorld {
-    private static final String TAG = "RustHelloWorld";
+    private static final String TAG = "IsolatedRustHelloWorld";
     private static native String hello(String input, int num);
     private static native String hello_hello(String input, int num);
     private static native String readFileNative(int input);
