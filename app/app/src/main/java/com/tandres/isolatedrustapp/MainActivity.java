@@ -4,6 +4,7 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.ParcelFileDescriptor;
 import android.util.Log;
 
 import java.io.File;
@@ -19,26 +20,19 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         Log.i(TAG, "Starting");
-        RustHelloWorld.main("TJ");
 
         mHandler.postDelayed(new Runnable() {
             @Override
             public void run() {
-                try {
-                    try {
-                        FileInputStream fis = new FileInputStream(new File( getFilesDir(),"test_file"));
-                        byte[] buf = new byte[100];
-                        fis.read(buf);
-                        Log.i(TAG, "BUF IS: " + new String(buf));
-                    }catch (Exception e) {
-                        Log.e(TAG, e.toString());
-                    }
 
-                    //String res = RustHelloWorld.read_file(fis.getFD());
-                    /*if (res != null) {
-                        Log.i(TAG, "OUTPUT RESULT: " + res);
-                    }*/
-                } catch(Exception e) {
+                RustHelloWorld.main("TJ");
+                try {
+                    File file = new File(getFilesDir(), "test_file");
+                    // We don't actually need pfd here (yet) but there's not a way to get
+                    // a raw fd to give to rust otherwise? I probably just can't find it.
+                    ParcelFileDescriptor pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY);
+                    RustHelloWorld.read_file(pfd.detachFd());
+                } catch (Exception e) {
                     Log.e(TAG, "Got exception " + e);
                 }
 
