@@ -3,6 +3,7 @@ package com.tandres.isolatedrustapp;
 import android.app.Service;
 import android.content.Intent;
 import android.os.IBinder;
+import android.os.ParcelFileDescriptor;
 import android.os.RemoteException;
 import android.util.Log;
 
@@ -32,6 +33,11 @@ public class IsolatedRustService extends Service {
         @Override
         public void say_hello() throws RemoteException {
             RustHelloWorld.main("From Isolated!");
+        }
+
+        @Override
+        public void readFile(ParcelFileDescriptor pfd) {
+            RustHelloWorld.read_file(pfd.detachFd());
         }
     };
 }

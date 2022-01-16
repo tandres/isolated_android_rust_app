@@ -32,17 +32,6 @@ public class MainActivity extends AppCompatActivity {
             Log.i(TAG, "Binding service");
             Intent intent = new Intent(MainActivity.this, IsolatedRustService.class);
             bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
-            /*RustHelloWorld.main("TJ");
-            try {
-                File file = new File(getFilesDir(), "test_file");
-                // We don't actually need pfd here (yet) but there's not a way to get
-                // a raw fd to give to rust otherwise? I probably just can't find it.
-                ParcelFileDescriptor pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY);
-                RustHelloWorld.read_file(pfd.detachFd());
-            } catch (Exception e) {
-                Log.e(TAG, "Got exception " + e);
-            } */
-
         }, 10000);
     }
 
@@ -51,9 +40,11 @@ public class MainActivity extends AppCompatActivity {
             Log.i(TAG, "Service connected");
             iIsolatedRustInterface = IIsolatedRustInterface.Stub.asInterface(service);
             mHandler.post(() -> {
-                Log.i(TAG, "Saying hello!");
+                Log.i(TAG, "Reading file across service boundary");
                 try {
-                    iIsolatedRustInterface.say_hello();
+                    File file = new File(getFilesDir(), "test_file");
+                    ParcelFileDescriptor pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY);
+                    iIsolatedRustInterface.readFile(pfd);
                 } catch(Exception e) {
                     Log.e(TAG, e.toString());
                 }
