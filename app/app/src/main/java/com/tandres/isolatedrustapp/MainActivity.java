@@ -29,7 +29,7 @@ public class MainActivity extends AppCompatActivity {
 
         Log.i(TAG, "Starting");
 
-        mRustObject =  new RustHelloWorld();
+        mRustObject =  new RustHelloWorld("IsolatedRustOuter");
         mRustObject.start();
 
         mHandler.postDelayed(() -> {

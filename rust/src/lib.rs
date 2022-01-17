@@ -7,7 +7,10 @@ use std::{
     thread, time,
 };
 
-use jni::JNIEnv;
+use jni::{
+    errors::Result,
+    JNIEnv,
+};
 use jni::objects::{JClass, JObject, JString, JValue};
 use jni::sys::{jint, jstring};
 
@@ -48,7 +51,7 @@ pub extern "C" fn Java_com_tandres_isolatedrustapp_RustHelloWorld_readFileNative
     env.new_string(buf).expect("Couldn't create java string!").into_inner()
 }
 
-fn log_callback<'a, S, J>(env: &'a JNIEnv, msg: S, callback: J) 
+fn log_callback<'a, S, J>(env: &'a JNIEnv, msg: S, callback: J) -> Result<()>
 where
     S: AsRef<str>,
     J: Into<JObject<'a>>,
@@ -59,7 +62,7 @@ where
                     "loggingCallback", 
                     "(Ljava/lang/String;)V", 
                     &[JValue::from(JObject::from(response))])
-        .unwrap(); 
+        .map(|_| ())
 }
 
 #[no_mangle]
@@ -69,7 +72,13 @@ pub extern "C" fn Java_com_tandres_isolatedrustapp_RustHelloWorld_spawnThread(
     _class: JClass, 
     callback: JObject,
 ) {
-    log_callback(&env, "Starting thread", callback); 
+    match log_callback(&env, "Starting thread", callback) {
+        Ok(_) => (),
+        Err(e) => {
+            let _ = env.throw(format!("Exception: {}", e));
+            return;
+        }
+    }
     let jvm = env.get_java_vm().unwrap();
 
     let callback = env.new_global_ref(callback).unwrap();

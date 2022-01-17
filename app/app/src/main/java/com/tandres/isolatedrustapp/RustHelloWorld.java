@@ -6,20 +6,24 @@ public class RustHelloWorld implements LoggingInterface {
     private static final String TAG = "IsolatedRustHelloWorld";
     private static native String hello(String input);
     private static native String readFileNative(int input);
-    private static native void spawnThread(LoggingInterface callback);
-
+    private static native void spawnThread(LoggingInterface callback) throws Exception;
+    private String loggingTag = TAG;
     static {
         System.loadLibrary("rust");
     }
 
-    RustHelloWorld() {
-
+    RustHelloWorld(String tag) {
+        this.loggingTag = tag;
     }
 
     public void start() {
-        Log.i(TAG, "Invoking spawnThread");
-        RustHelloWorld.spawnThread(this);
-        Log.i(TAG, "Completed spawnThread");
+        try {
+            Log.i(TAG, "Invoking spawnThread");
+            RustHelloWorld.spawnThread(this);
+            Log.i(TAG, "Completed spawnThread");
+        } catch(Exception e) {
+            Log.e(TAG, e.toString());
+        }
     }
 
     public static void main(String name) {
@@ -35,6 +39,6 @@ public class RustHelloWorld implements LoggingInterface {
     }
 
     public void loggingCallback(String msg) {
-        Log.i(TAG, msg);
+        Log.i(this.loggingTag, msg);
     }
 }

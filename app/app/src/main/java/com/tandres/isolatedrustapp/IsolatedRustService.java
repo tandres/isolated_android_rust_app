@@ -8,7 +8,8 @@ import android.os.RemoteException;
 import android.util.Log;
 
 public class IsolatedRustService extends Service {
-    static final String TAG = "IsolatedService";
+    private static final String TAG = "IsolatedService";
+    private RustHelloWorld mRust = null;
 
     public IsolatedRustService() {
     }
@@ -16,6 +17,8 @@ public class IsolatedRustService extends Service {
     @Override
     public void onCreate() {
         Log.i(TAG, "Created!");
+        this.mRust = new RustHelloWorld("IsolatedRustInner");
+        this.mRust.start();
     }
 
     @Override
