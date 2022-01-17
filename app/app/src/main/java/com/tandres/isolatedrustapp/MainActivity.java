@@ -30,13 +30,18 @@ public class MainActivity extends AppCompatActivity {
         Log.i(TAG, "Starting");
 
         mRustObject =  new RustHelloWorld("IsolatedRustOuter");
-        mRustObject.start();
 
         mHandler.postDelayed(() -> {
             Log.i(TAG, "Binding service");
             Intent intent = new Intent(MainActivity.this, IsolatedRustService.class);
             bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
-        }, 10000);
+        }, 5000);
+    }
+
+    private void startOuter(ParcelFileDescriptor pfd) {
+        int fd = pfd.detachFd();
+        Log.i(TAG, "Starting outer process with fd: " + fd);
+        mRustObject.start(fd);
     }
 
     private final ServiceConnection mConnection = new ServiceConnection() {
@@ -44,11 +49,11 @@ public class MainActivity extends AppCompatActivity {
             Log.i(TAG, "Service connected");
             iIsolatedRustInterface = IIsolatedRustInterface.Stub.asInterface(service);
             mHandler.post(() -> {
-                Log.i(TAG, "Reading file across service boundary");
+                Log.i(TAG, "Starting Processes");
                 try {
-                    File file = new File(getFilesDir(), "test_file");
-                    ParcelFileDescriptor pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY);
-                    iIsolatedRustInterface.readFile(pfd);
+                    ParcelFileDescriptor[] pairs = ParcelFileDescriptor.createSocketPair();
+                    MainActivity.this.startOuter(pairs[1]);
+                    iIsolatedRustInterface.start(pairs[0]);
                 } catch(Exception e) {
                     Log.e(TAG, e.toString());
                 }

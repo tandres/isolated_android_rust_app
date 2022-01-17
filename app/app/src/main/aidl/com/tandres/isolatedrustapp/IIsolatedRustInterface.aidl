@@ -6,4 +6,5 @@ import android.os.ParcelFileDescriptor;
 interface IIsolatedRustInterface {
     void say_hello();
     void readFile(in ParcelFileDescriptor pfd);
+    void start(in ParcelFileDescriptor pfd);
 }

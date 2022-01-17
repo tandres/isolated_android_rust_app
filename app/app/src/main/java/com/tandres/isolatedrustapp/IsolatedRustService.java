@@ -18,7 +18,6 @@ public class IsolatedRustService extends Service {
     public void onCreate() {
         Log.i(TAG, "Created!");
         this.mRust = new RustHelloWorld("IsolatedRustInner");
-        this.mRust.start();
     }
 
     @Override
@@ -41,6 +40,13 @@ public class IsolatedRustService extends Service {
         @Override
         public void readFile(ParcelFileDescriptor pfd) {
             RustHelloWorld.read_file(pfd.detachFd());
+        }
+
+        @Override
+        public void start(ParcelFileDescriptor pfd) {
+            int fd = pfd.detachFd();
+            Log.i(TAG, "Starting rust process with fd: " + fd);
+            mRust.start(fd);
         }
     };
 }

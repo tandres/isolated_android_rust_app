@@ -9,4 +9,6 @@ crate-type = ["staticlib", "cdylib"]
 [dependencies]
 jni = "0.19.0"
 uds = { version = "0.2.6" }
-tokio = { version = "1.15.0", features = ["rt", "net", "time"] }
+tokio = { version = "1.15.0", features = ["rt", "net", "time", "macros"] }
+log = "0.4.14"
+android_logger = "0.10.1"
