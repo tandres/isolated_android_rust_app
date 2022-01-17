@@ -7,10 +7,9 @@ use std::{
     thread, time,
 };
 
-use jni::{
-    errors::Result,
-    JNIEnv,
-};
+use tokio::runtime::Builder;
+
+use jni::JNIEnv;
 use jni::objects::{JClass, JObject, JString, JValue};
 use jni::sys::{jint, jstring};
 
@@ -51,18 +50,17 @@ pub extern "C" fn Java_com_tandres_isolatedrustapp_RustHelloWorld_readFileNative
     env.new_string(buf).expect("Couldn't create java string!").into_inner()
 }
 
-fn log_callback<'a, S, J>(env: &'a JNIEnv, msg: S, callback: J) -> Result<()>
+fn log_callback<'a, S, J>(env: &'a JNIEnv, msg: S, callback: J)
 where
     S: AsRef<str>,
     J: Into<JObject<'a>>,
 {
     let s = format!("Rust: {}", msg.as_ref());
     let response = env.new_string(&s).expect("Couldn't create java string!");
-    env.call_method(callback, 
+    let _ = env.call_method(callback, 
                     "loggingCallback", 
                     "(Ljava/lang/String;)V", 
-                    &[JValue::from(JObject::from(response))])
-        .map(|_| ())
+                    &[JValue::from(JObject::from(response))]);
 }
 
 #[no_mangle]
@@ -72,23 +70,25 @@ pub extern "C" fn Java_com_tandres_isolatedrustapp_RustHelloWorld_spawnThread(
     _class: JClass, 
     callback: JObject,
 ) {
-    match log_callback(&env, "Starting thread", callback) {
-        Ok(_) => (),
-        Err(e) => {
-            let _ = env.throw(format!("Exception: {}", e));
-            return;
-        }
-    }
+    log_callback(&env, "Starting thread", callback);
     let jvm = env.get_java_vm().unwrap();
 
     let callback = env.new_global_ref(callback).unwrap();
     thread::spawn(move || {
+        let rt = Builder::new_current_thread()
+            .enable_time()
+            .enable_io()
+            .build()
+            .unwrap();
         let env = jvm.attach_current_thread().unwrap();
-        let tick = time::Duration::from_millis(1000);
-        loop {
-            thread::sleep(tick);
-            log_callback(&env, "Tick Tock", callback.as_obj());
-        }
+        log_callback(&env, "Starting runtime", callback.as_obj());
+        rt.block_on(async {
+            let tick = time::Duration::from_millis(1000);
+            loop {
+                tokio::time::sleep(tick).await;
+                log_callback(&env, "Tick Tock", callback.as_obj());
+            }
+        });
     });
 }
 
