@@ -13,8 +13,10 @@ import android.os.IBinder;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileReader;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "IsolatedMain";
@@ -44,6 +46,18 @@ public class MainActivity extends AppCompatActivity {
         mRustObject.start(fd);
     }
 
+    private void readChildStat(int pid) {
+        try {
+            String filepath = "/proc/" + pid + "/stat";
+            BufferedReader stat = new BufferedReader(new FileReader(filepath));
+            String line = stat.readLine();
+            Log.d(TAG, "Stat: " + line);
+        }
+        catch (Exception e) {
+            Log.e(TAG, "Couldn't read stat for " + pid + ": " + e);
+        }
+    }
+
     private final ServiceConnection mConnection = new ServiceConnection() {
         public void onServiceConnected(ComponentName className, IBinder service) {
             Log.i(TAG, "Service connected");
@@ -53,7 +67,21 @@ public class MainActivity extends AppCompatActivity {
                 try {
                     ParcelFileDescriptor[] pairs = ParcelFileDescriptor.createSocketPair();
                     MainActivity.this.startOuter(pairs[1]);
+                    int pid = iIsolatedRustInterface.getPid();
+                    Log.i(TAG, "PID: " + pid);
+                    File statdir = new File("/proc");
+                    try {
+                        for (File file : statdir.listFiles()) {
+                            Log.i(TAG, file.getName());
+                        }
+                    } catch(Exception e) {
+                        Log.e(TAG, e.toString());
+                    }
+                    readChildStat(android.os.Process.myPid());
                     iIsolatedRustInterface.start(pairs[0]);
+                    mHandler.postDelayed(() -> {
+                        readChildStat(pid);
+                    }, 5000);
                 } catch(Exception e) {
                     Log.e(TAG, e.toString());
                 }

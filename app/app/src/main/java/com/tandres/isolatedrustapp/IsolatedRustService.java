@@ -38,6 +38,11 @@ public class IsolatedRustService extends Service {
         }
 
         @Override
+        public int getPid() {
+            return android.os.Process.myPid();
+        }
+
+        @Override
         public void readFile(ParcelFileDescriptor pfd) {
             RustHelloWorld.read_file(pfd.detachFd());
         }
