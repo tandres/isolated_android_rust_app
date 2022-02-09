@@ -23,6 +23,7 @@ public class MainActivity extends AppCompatActivity {
     private Handler mHandler = new Handler();
     private IIsolatedRustInterface iIsolatedRustInterface = null;
     private RustHelloWorld mRustObject = null;
+    private BufferedReader mBufferedReader = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -58,6 +59,15 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void listFileDescriptors() {
+        File fds = new File("/proc/self/fdinfo/");
+        StringBuilder sb = new StringBuilder("Fds: ");
+        for (File fd: fds.listFiles()) {
+            sb.append(" " + fd.getName());
+        }
+        Log.d(TAG, sb.toString());
+    }
+
     private final ServiceConnection mConnection = new ServiceConnection() {
         public void onServiceConnected(ComponentName className, IBinder service) {
             Log.i(TAG, "Service connected");
@@ -69,22 +79,38 @@ public class MainActivity extends AppCompatActivity {
                     MainActivity.this.startOuter(pairs[1]);
                     int pid = iIsolatedRustInterface.getPid();
                     Log.i(TAG, "PID: " + pid);
-                    File statdir = new File("/proc");
-                    try {
-                        for (File file : statdir.listFiles()) {
-                            Log.i(TAG, file.getName());
-                        }
-                    } catch(Exception e) {
-                        Log.e(TAG, e.toString());
-                    }
                     readChildStat(android.os.Process.myPid());
                     iIsolatedRustInterface.start(pairs[0]);
-                    mHandler.postDelayed(() -> {
-                        readChildStat(pid);
-                    }, 5000);
+                    try {
+                        listFileDescriptors();
+                        ParcelFileDescriptor pfd = iIsolatedRustInterface.getStdoutFd();
+                        mBufferedReader = new BufferedReader(new FileReader(pfd.getFileDescriptor()));
+                        String out = "";
+                        do {
+                            Log.d(TAG, "Out: " + out);
+                            out = mBufferedReader.readLine();
+
+                        } while (out!=null && out.length() > 0);
+                        listFileDescriptors();
+                    } catch (Exception e) {
+                        Log.e(TAG, e.toString());
+                    }
+
                 } catch(Exception e) {
                     Log.e(TAG, e.toString());
                 }
+                mHandler.postDelayed(() -> {
+                    try {
+                        String out = "";
+                        do {
+                            Log.d(TAG, "Out: " + out);
+                            out = mBufferedReader.readLine();
+
+                        } while (out!=null && out.length() > 0);
+                    } catch (Exception e) {
+                        Log.e(TAG, e.toString());
+                    }
+                }, 5000);
             });
         }
 

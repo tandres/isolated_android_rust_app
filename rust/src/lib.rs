@@ -64,6 +64,7 @@ fn run_thread(tag: String, socket_fd: i32) {
             let tick = time::Duration::from_millis(1000);
             loop {
                 debug!("Tick");
+                println!("Hello");
                 tokio::time::sleep(tick).await;
             }
         });
