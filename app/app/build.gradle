@@ -33,7 +33,7 @@ apply plugin: 'org.mozilla.rust-android-gradle.rust-android'
 cargo {
     module  = "../../rust"       // Or whatever directory contains your Cargo.toml
     libname = "rust"          // Or whatever matches Cargo.toml's [package] name.
-    targets = ["arm", "arm64"]  // See bellow for a longer list of options
+    targets = ["arm", "arm64", "x86_64"]  // See bellow for a longer list of options
 }
 
 dependencies {
