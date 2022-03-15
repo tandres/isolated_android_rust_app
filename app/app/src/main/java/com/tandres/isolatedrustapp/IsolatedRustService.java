@@ -34,12 +34,12 @@ public class IsolatedRustService extends Service {
         return mBinder;
     }
 
-    public native void startChild(ParcelFileDescriptor pfd);
+    public native void startChild(ParcelFileDescriptor pfd, int id);
 
     private final IIsolatedRustInterface.Stub mBinder = new IIsolatedRustInterface.Stub() {
         @Override
-        public void start(ParcelFileDescriptor pfd) {
-            startChild(pfd);
+        public void start(ParcelFileDescriptor pfd, int id) {
+            startChild(pfd, id);
         }
     };
 }

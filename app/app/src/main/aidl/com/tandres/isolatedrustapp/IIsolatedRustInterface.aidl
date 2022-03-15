@@ -4,5 +4,5 @@ package com.tandres.isolatedrustapp;
 import android.os.ParcelFileDescriptor;
 
 interface IIsolatedRustInterface {
-    void start(in ParcelFileDescriptor pfd);
+    void start(in ParcelFileDescriptor pfd, int id);
 }
