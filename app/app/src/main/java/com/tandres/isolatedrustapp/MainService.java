@@ -1,16 +1,16 @@
 package com.tandres.isolatedrustapp;
 
-import androidx.appcompat.app.AppCompatActivity;
+import androidx.annotation.Nullable;
+import android.app.Service;
 
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.ServiceConnection;
-import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.util.Log;
 
-public class MainActivity extends AppCompatActivity implements ServiceConnection {
+public class MainService extends Service implements ServiceConnection {
     private static final String TAG = "IsolatedMain";
     private Handler mHandler = new Handler();
 
@@ -18,20 +18,28 @@ public class MainActivity extends AppCompatActivity implements ServiceConnection
         System.loadLibrary("rust");
     }
 
+    public MainService() {
+
+    }
+
     public native void onServiceConnected(ComponentName className, IBinder service);
     public native void onServiceDisconnected(ComponentName className);
-    public native void startParent(MainActivity activity);
+    public native void startParent(MainService activity);
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
+    public void onCreate() {
 
         Log.i(TAG, "Starting");
 
         mHandler.postDelayed(() -> {
             Log.i(TAG, "Binding service");
-            startParent(MainActivity.this);
+            startParent(MainService.this);
         }, 5000);
+    }
+
+    @Nullable
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null;
     }
 }

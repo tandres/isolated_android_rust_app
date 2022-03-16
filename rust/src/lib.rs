@@ -141,7 +141,7 @@ fn spawn_thread(name: String, socket_fd: i32) {
 /// function bind_service.
 #[no_mangle]
 #[allow(non_snake_case)]
-pub extern "C" fn Java_com_tandres_isolatedrustapp_MainActivity_onServiceConnected(
+pub extern "C" fn Java_com_tandres_isolatedrustapp_MainService_onServiceConnected(
     env: JNIEnv,
     _class: JClass,
     component: JObject,
@@ -204,7 +204,7 @@ fn detach_fd(env: JNIEnv, pfd: JObject) -> Result<i32, Error> {
 
 #[no_mangle]
 #[allow(non_snake_case)]
-pub extern "C" fn Java_com_tandres_isolatedrustapp_MainActivity_onServiceDisconnected(
+pub extern "C" fn Java_com_tandres_isolatedrustapp_MainService_onServiceDisconnected(
     _env: JNIEnv,
     _class: JClass,
     _class_name: JObject,
@@ -215,10 +215,10 @@ pub extern "C" fn Java_com_tandres_isolatedrustapp_MainActivity_onServiceDisconn
 
 #[no_mangle]
 #[allow(non_snake_case)]
-pub extern "C" fn Java_com_tandres_isolatedrustapp_MainActivity_startParent(
+pub extern "C" fn Java_com_tandres_isolatedrustapp_MainService_startParent(
     env: JNIEnv,
     _class: JClass,
-    activity: JObject,
+    service: JObject,
 ) {
     let config = Config::default()
         .with_min_level(Level::Trace)
@@ -229,8 +229,8 @@ pub extern "C" fn Java_com_tandres_isolatedrustapp_MainActivity_startParent(
     // there should probably be a struct with this stuff in it 
     // env.find_class() only works on the main thread for our package classes
     let class_loader = get_class_loader(env).unwrap();
-    // save activity as global ref to move to new thread
-    let activity = env.new_global_ref(activity).unwrap();
+    // save service as global ref to move to new thread
+    let mainservice = env.new_global_ref(service).unwrap();
     // save jvm to attach to new thread
     let jvm = env.get_java_vm().unwrap();
 
@@ -257,7 +257,7 @@ pub extern "C" fn Java_com_tandres_isolatedrustapp_MainActivity_startParent(
                 let service_name = format!("com/tandres/isolatedrustapp/IsolatedRustService{}", i);
                 let service_name_object = guard.new_string(service_name).unwrap();
                 let service_class = guard.call_method(&class_loader, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;", &[JValue::Object(*service_name_object)]).unwrap().l().unwrap();
-                match bind_service(*guard, activity.as_obj(), service_class) {
+                match bind_service(*guard, mainservice.as_obj(), service_class) {
                     Ok(_) => trace!("Called to bindService for service id: {}", i),
                     Err(e) => error!("Failed to call bindService for service id {}: {}", i, e),
                 };
@@ -301,19 +301,19 @@ pub extern "C" fn Java_com_tandres_isolatedrustapp_MainActivity_startParent(
     });
 }
 
-fn bind_service(env: JNIEnv, activity: JObject, service_class: JObject) -> Result<(), Error> {
+fn bind_service(env: JNIEnv, mainservice: JObject, service_class: JObject) -> Result<(), Error> {
     let intent_class = env.find_class("android/content/Intent")?;
-    let intent = env.new_object(intent_class, "(Landroid/content/Context;Ljava/lang/Class;)V", &[JValue::Object(activity), JValue::Object(service_class)])?;
+    let intent = env.new_object(intent_class, "(Landroid/content/Context;Ljava/lang/Class;)V", &[JValue::Object(mainservice), JValue::Object(service_class)])?;
     
-    // activity implements ServiceConnection as ServiceConnected ServiceDisconnected in this file
+    // mainservice implements ServiceConnection as ServiceConnected ServiceDisconnected in this file
     // 1 here is android.content.Context.BIND_AUTO_CREATE
     let args = &[
         JValue::Object(intent),
-        JValue::Object(activity),
+        JValue::Object(mainservice),
         JValue::Int(1),
     ];
     let sig = "(Landroid/content/Intent;Landroid/content/ServiceConnection;I)Z";
-    env.call_method(activity, "bindService", sig, args)?;
+    env.call_method(mainservice, "bindService", sig, args)?;
 
     Ok(())
 }

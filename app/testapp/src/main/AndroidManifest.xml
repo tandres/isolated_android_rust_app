@@ -18,14 +18,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity
-            android:name="com.tandres.isolatedrustapp.MainActivity"
+        <service
+            android:name="com.tandres.isolatedrustapp.MainService"
             android:exported="true">
-            <intent-filter>
-                <action android:name="android.androidVNC.androidVNC.LAUNCH" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
+        </service>
     </application>
 
 </manifest>
