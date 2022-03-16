@@ -20,7 +20,7 @@ public class MainActivity extends AppCompatActivity implements ServiceConnection
 
     public native void onServiceConnected(ComponentName className, IBinder service);
     public native void onServiceDisconnected(ComponentName className);
-    public native void startParent(MainActivity activity, Intent intent);
+    public native void startParent(MainActivity activity);
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -31,9 +31,7 @@ public class MainActivity extends AppCompatActivity implements ServiceConnection
 
         mHandler.postDelayed(() -> {
             Log.i(TAG, "Binding service");
-            //build up intent from java side because it is easier but we could do it from Rust
-            Intent intent = new Intent(MainActivity.this, IsolatedRustService.class);
-            startParent(MainActivity.this, intent);
+            startParent(MainActivity.this);
         }, 5000);
     }
 }

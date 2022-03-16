@@ -4,7 +4,7 @@ use std::{
         raw::c_char,
         unix::{net::UnixStream as StdUnixStream, prelude::FromRawFd},
     },
-    thread, time::{self, Duration}, sync::{Arc, Mutex, Once}, borrow::BorrowMut, env, fmt::format,
+    thread, time::{self}, sync::{Mutex, Once}, borrow::BorrowMut,
 };
 
 use android_logger::{Config, FilterBuilder};
@@ -12,23 +12,23 @@ use log::{debug, error, info, trace, Level};
 
 use tokio::{io::Interest, net::UnixStream as TokioUnixStream, runtime::Builder};
 
-use jni::{errors::Error, sys::jint, objects::GlobalRef};
+use jni::{errors::Error, objects::{GlobalRef, JString}};
 use jni::objects::{JClass, JValue};
 use jni::{objects::JObject, JNIEnv};
 
 pub type Callback = unsafe extern "C" fn(*const c_char) -> ();
 
-static mut GLOBAL_SERVICE: Option<Mutex<Option<GlobalRef>>> = None;
+static mut GLOBAL_SERVICES: Option<[Mutex<Option<GlobalRef>>; 5]> = None;
 static INIT: Once = Once::new();
 
-fn global_service<'a>() -> &'a Mutex<Option<GlobalRef>> {
+fn global_services<'a>(index: usize) -> &'a Mutex<Option<GlobalRef>> {
     INIT.call_once(|| {
         unsafe {
-            *GLOBAL_SERVICE.borrow_mut() = Some(Mutex::new(None));
+            *GLOBAL_SERVICES.borrow_mut() = Some([Mutex::new(None), Mutex::new(None), Mutex::new(None), Mutex::new(None), Mutex::new(None)]);
         }
     });
 
-    unsafe { GLOBAL_SERVICE.as_ref().unwrap() }
+    unsafe { &GLOBAL_SERVICES.as_ref().unwrap()[index] }
 }
 
 fn run_thread(name: String, socket_fd: i32) {
@@ -117,7 +117,6 @@ pub extern "C" fn Java_com_tandres_isolatedrustapp_IsolatedRustService_startChil
     env: JNIEnv,
     _class: JClass,
     pfd: JObject,
-    id: jint,
 ) {
     let socket_fd: i32 = detach_fd(env, pfd).unwrap();
 
@@ -127,7 +126,7 @@ pub extern "C" fn Java_com_tandres_isolatedrustapp_IsolatedRustService_startChil
         .with_filter(FilterBuilder::new().parse("trace").build());
     android_logger::init_once(config);
 
-    let name = format!("Child {}", id);
+    let name = format!("Child");
     spawn_thread(name, socket_fd)
 }
 
@@ -145,18 +144,24 @@ fn spawn_thread(name: String, socket_fd: i32) {
 pub extern "C" fn Java_com_tandres_isolatedrustapp_MainActivity_onServiceConnected(
     env: JNIEnv,
     _class: JClass,
-    _class_name: JObject,
+    component: JObject,
     service: JObject,
 ) {
     trace!("Service Connected");
 
-     match set_service_object(env, service) {
-        Ok(_) => trace!("Got service object successfully"),
-        Err(e) => error!("Failed to get service object: {}", e),
+     match save_service_object(env, service, component) {
+        Ok(index) => trace!("Saved service object {} successfully", index),
+        Err(e) => error!("Failed to save service object: {}", e),
     };
 }
 
-fn set_service_object(env: JNIEnv, service: JObject) -> Result<(), Error> {
+fn save_service_object(env: JNIEnv, service: JObject, component: JObject) -> Result<u32, Error> {
+    // parse class name for the index of this service, this breaks if we go double digit services
+    let class_name_jstring  = JString::from(env.call_method(component, "getClassName", "()Ljava/lang/String;", &[])?.l()?);
+    let class_name = String::from(env.get_string(class_name_jstring)?);
+    let index = class_name.chars().nth(class_name.len() - 1).unwrap().to_digit(10).unwrap();
+
+    // service interface
     let service_stub_class =
         env.find_class("com/tandres/isolatedrustapp/IIsolatedRustInterface$Stub")?;
     let service_object = env
@@ -168,9 +173,11 @@ fn set_service_object(env: JNIEnv, service: JObject) -> Result<(), Error> {
         )?
         .l()?;
     let global_service_object = env.new_global_ref(service_object)?;
+    
+    // save to our list of global services
+    *global_services(index as usize).lock().unwrap() = Some(global_service_object);
 
-    *global_service().lock().unwrap() = Some(global_service_object);
-    Ok(())
+    Ok(index)
 }
 
 fn build_fds(env: JNIEnv) -> Result<(i32, JObject), Error> {
@@ -204,7 +211,6 @@ pub extern "C" fn Java_com_tandres_isolatedrustapp_MainActivity_onServiceDisconn
 ) {
     error!("Service Disconnected!");
     // TODO - deallocate global ref
-    *global_service().lock().unwrap() = None;
 }
 
 #[no_mangle]
@@ -213,7 +219,6 @@ pub extern "C" fn Java_com_tandres_isolatedrustapp_MainActivity_startParent(
     env: JNIEnv,
     _class: JClass,
     activity: JObject,
-    intent: JObject,
 ) {
     let config = Config::default()
         .with_min_level(Level::Trace)
@@ -221,11 +226,12 @@ pub extern "C" fn Java_com_tandres_isolatedrustapp_MainActivity_startParent(
         .with_filter(FilterBuilder::new().parse("trace").build());
     android_logger::init_once(config);
 
-    match bind_service(env, activity, intent) {
-        Ok(_) => trace!("Successfully called bindService!"),
-        Err(e) => error!("Failed to call bindService: {}", e),
-    }
-
+    // there should probably be a struct with this stuff in it 
+    // env.find_class() only works on the main thread for our package classes
+    let class_loader = get_class_loader(env).unwrap();
+    // save activity as global ref to move to new thread
+    let activity = env.new_global_ref(activity).unwrap();
+    // save jvm to attach to new thread
     let jvm = env.get_java_vm().unwrap();
 
     thread::spawn(move || {
@@ -244,23 +250,32 @@ pub extern "C" fn Java_com_tandres_isolatedrustapp_MainActivity_startParent(
                     tokio::time::sleep(tick).await;
                 }
             });
+            let guard = jvm.attach_current_thread().unwrap();
+            
+            // bind all 5 of our services, this would be done as needed in real applications
+            for i in 0..5 {
+                let service_name = format!("com/tandres/isolatedrustapp/IsolatedRustService{}", i);
+                let service_name_object = guard.new_string(service_name).unwrap();
+                let service_class = guard.call_method(&class_loader, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;", &[JValue::Object(*service_name_object)]).unwrap().l().unwrap();
+                match bind_service(*guard, activity.as_obj(), service_class) {
+                    Ok(_) => trace!("Called to bindService for service id: {}", i),
+                    Err(e) => error!("Failed to call bindService for service id {}: {}", i, e),
+                };
+            }
 
-            loop {
-                tokio::time::sleep(time::Duration::from_millis(1000)).await;
-                let global_lock = global_service().lock().unwrap(); 
-                let service_option = global_lock.as_ref();   
-                if let Some(service) = service_option {
-                    let env = jvm.attach_current_thread().unwrap();
-                    for i in 0..10 {
-                        let (parent_fd, child_pfd) = build_fds(*env).unwrap();
+            for i in 0..5 {
+                loop {
+                    tokio::time::sleep(time::Duration::from_secs(1)).await;
+                    let service_lock = global_services(i).lock().unwrap();
+                    if let Some(service) = service_lock.as_ref() {
+                        let (parent_fd, child_pfd) = build_fds(*guard).unwrap();
 
-                        env.call_method(
+                        guard.call_method(
                             service,
                             "start",
-                            "(Landroid/os/ParcelFileDescriptor;I)V",
-                            &[JValue::Object(child_pfd), JValue::Int(i)],
+                            "(Landroid/os/ParcelFileDescriptor;)V",
+                            &[JValue::Object(child_pfd)],
                         ).unwrap();
-
                         let sock_jh = tokio::spawn(async move {
                             match socket_handler("Parent".to_string(), parent_fd).await {
                                 Ok(_) => {
@@ -272,8 +287,8 @@ pub extern "C" fn Java_com_tandres_isolatedrustapp_MainActivity_startParent(
                             }
                         });
                         futures.push(sock_jh);
+                        break;
                     }
-                    break;
                 }
             }
             futures.push(tick_jh);
@@ -286,8 +301,10 @@ pub extern "C" fn Java_com_tandres_isolatedrustapp_MainActivity_startParent(
     });
 }
 
-fn bind_service(env: JNIEnv, activity: JObject, intent: JObject) -> Result<(), Error> {
-    // intent here is currently passed in but could be created here
+fn bind_service(env: JNIEnv, activity: JObject, service_class: JObject) -> Result<(), Error> {
+    let intent_class = env.find_class("android/content/Intent")?;
+    let intent = env.new_object(intent_class, "(Landroid/content/Context;Ljava/lang/Class;)V", &[JValue::Object(activity), JValue::Object(service_class)])?;
+    
     // activity implements ServiceConnection as ServiceConnected ServiceDisconnected in this file
     // 1 here is android.content.Context.BIND_AUTO_CREATE
     let args = &[
@@ -299,4 +316,11 @@ fn bind_service(env: JNIEnv, activity: JObject, intent: JObject) -> Result<(), E
     env.call_method(activity, "bindService", sig, args)?;
 
     Ok(())
+}
+
+fn get_class_loader(env: JNIEnv) -> Result<GlobalRef, Error> {
+    let thread_class = env.find_class("java/lang/Thread")?;
+    let current_thread = env.call_static_method(thread_class, "currentThread", "()Ljava/lang/Thread;", &[])?.l()?;
+    let class_loader = env.call_method(current_thread, "getContextClassLoader", "()Ljava/lang/ClassLoader;", &[])?.l()?;
+    env.new_global_ref(class_loader)
 }

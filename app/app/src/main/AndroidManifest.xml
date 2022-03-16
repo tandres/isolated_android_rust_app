@@ -10,10 +10,31 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.IsolatedRustApp">
         <service
-            android:name=".IsolatedRustService"
+            android:name=".IsolatedRustService0"
             android:enabled="true"
             android:exported="false"
-            android:isolatedProcess="true"></service>
+            android:isolatedProcess="true" />
+        <service
+            android:name=".IsolatedRustService1"
+            android:enabled="true"
+            android:exported="false"
+            android:isolatedProcess="true" />
+        <service
+            android:name=".IsolatedRustService2"
+            android:enabled="true"
+            android:exported="false"
+            android:isolatedProcess="true" />
+        <service
+            android:name=".IsolatedRustService3"
+            android:enabled="true"
+            android:exported="false"
+            android:isolatedProcess="true" />
+        <service
+            android:name=".IsolatedRustService4"
+            android:enabled="true"
+            android:exported="false"
+            android:isolatedProcess="true">
+        </service>
 
         <activity
             android:name=".MainActivity"
