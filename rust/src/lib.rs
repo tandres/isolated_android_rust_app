@@ -1,10 +1,13 @@
 use std::{
+    borrow::BorrowMut,
     io,
     os::{
         raw::c_char,
         unix::{net::UnixStream as StdUnixStream, prelude::FromRawFd},
     },
-    thread, time::{self}, sync::{Mutex, Once}, borrow::BorrowMut,
+    sync::{Mutex, Once},
+    thread,
+    time::{self},
 };
 
 use android_logger::{Config, FilterBuilder};
@@ -12,8 +15,11 @@ use log::{debug, error, info, trace, Level};
 
 use tokio::{io::Interest, net::UnixStream as TokioUnixStream, runtime::Builder};
 
-use jni::{errors::Error, objects::{GlobalRef, JString}};
 use jni::objects::{JClass, JValue};
+use jni::{
+    errors::Error,
+    objects::{GlobalRef, JString},
+};
 use jni::{objects::JObject, JNIEnv};
 
 pub type Callback = unsafe extern "C" fn(*const c_char) -> ();
@@ -21,11 +27,18 @@ pub type Callback = unsafe extern "C" fn(*const c_char) -> ();
 static mut GLOBAL_SERVICES: Option<[Mutex<Option<GlobalRef>>; 5]> = None;
 static INIT: Once = Once::new();
 
+/// I have no idea the proper way to do a global variable like this
+/// and I am sure we could make this better so a global variable isn't needed.
+/// This seemed to work well for a quick prototype.
 fn global_services<'a>(index: usize) -> &'a Mutex<Option<GlobalRef>> {
-    INIT.call_once(|| {
-        unsafe {
-            *GLOBAL_SERVICES.borrow_mut() = Some([Mutex::new(None), Mutex::new(None), Mutex::new(None), Mutex::new(None), Mutex::new(None)]);
-        }
+    INIT.call_once(|| unsafe {
+        *GLOBAL_SERVICES.borrow_mut() = Some([
+            Mutex::new(None),
+            Mutex::new(None),
+            Mutex::new(None),
+            Mutex::new(None),
+            Mutex::new(None),
+        ]);
     });
 
     unsafe { &GLOBAL_SERVICES.as_ref().unwrap()[index] }
@@ -149,7 +162,7 @@ pub extern "C" fn Java_com_tandres_isolatedrustapp_MainService_onServiceConnecte
 ) {
     trace!("Service Connected");
 
-     match save_service_object(env, service, component) {
+    match save_service_object(env, service, component) {
         Ok(index) => trace!("Saved service object {} successfully", index),
         Err(e) => error!("Failed to save service object: {}", e),
     };
@@ -157,9 +170,17 @@ pub extern "C" fn Java_com_tandres_isolatedrustapp_MainService_onServiceConnecte
 
 fn save_service_object(env: JNIEnv, service: JObject, component: JObject) -> Result<u32, Error> {
     // parse class name for the index of this service, this breaks if we go double digit services
-    let class_name_jstring  = JString::from(env.call_method(component, "getClassName", "()Ljava/lang/String;", &[])?.l()?);
+    let class_name_jstring = JString::from(
+        env.call_method(component, "getClassName", "()Ljava/lang/String;", &[])?
+            .l()?,
+    );
     let class_name = String::from(env.get_string(class_name_jstring)?);
-    let index = class_name.chars().nth(class_name.len() - 1).unwrap().to_digit(10).unwrap();
+    let index = class_name
+        .chars()
+        .nth(class_name.len() - 1)
+        .unwrap()
+        .to_digit(10)
+        .unwrap();
 
     // service interface
     let service_stub_class =
@@ -173,7 +194,7 @@ fn save_service_object(env: JNIEnv, service: JObject, component: JObject) -> Res
         )?
         .l()?;
     let global_service_object = env.new_global_ref(service_object)?;
-    
+
     // save to our list of global services
     *global_services(index as usize).lock().unwrap() = Some(global_service_object);
 
@@ -226,7 +247,7 @@ pub extern "C" fn Java_com_tandres_isolatedrustapp_MainService_startParent(
         .with_filter(FilterBuilder::new().parse("trace").build());
     android_logger::init_once(config);
 
-    // there should probably be a struct with this stuff in it 
+    // there should probably be a struct with this stuff in it
     // env.find_class() only works on the main thread for our package classes
     let class_loader = get_class_loader(env).unwrap();
     // save service as global ref to move to new thread
@@ -236,10 +257,10 @@ pub extern "C" fn Java_com_tandres_isolatedrustapp_MainService_startParent(
 
     thread::spawn(move || {
         let rt = Builder::new_current_thread()
-        .enable_time()
-        .enable_io()
-        .build()
-        .unwrap();
+            .enable_time()
+            .enable_io()
+            .build()
+            .unwrap();
         rt.block_on(async {
             let mut futures = Vec::new();
             let tick_jh = tokio::spawn(async {
@@ -251,12 +272,21 @@ pub extern "C" fn Java_com_tandres_isolatedrustapp_MainService_startParent(
                 }
             });
             let guard = jvm.attach_current_thread().unwrap();
-            
+
             // bind all 5 of our services, this would be done as needed in real applications
             for i in 0..5 {
                 let service_name = format!("com/tandres/isolatedrustapp/IsolatedRustService{}", i);
                 let service_name_object = guard.new_string(service_name).unwrap();
-                let service_class = guard.call_method(&class_loader, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;", &[JValue::Object(*service_name_object)]).unwrap().l().unwrap();
+                let service_class = guard
+                    .call_method(
+                        &class_loader,
+                        "loadClass",
+                        "(Ljava/lang/String;)Ljava/lang/Class;",
+                        &[JValue::Object(*service_name_object)],
+                    )
+                    .unwrap()
+                    .l()
+                    .unwrap();
                 match bind_service(*guard, mainservice.as_obj(), service_class) {
                     Ok(_) => trace!("Called to bindService for service id: {}", i),
                     Err(e) => error!("Failed to call bindService for service id {}: {}", i, e),
@@ -270,12 +300,14 @@ pub extern "C" fn Java_com_tandres_isolatedrustapp_MainService_startParent(
                     if let Some(service) = service_lock.as_ref() {
                         let (parent_fd, child_pfd) = build_fds(*guard).unwrap();
 
-                        guard.call_method(
-                            service,
-                            "start",
-                            "(Landroid/os/ParcelFileDescriptor;)V",
-                            &[JValue::Object(child_pfd)],
-                        ).unwrap();
+                        guard
+                            .call_method(
+                                service,
+                                "start",
+                                "(Landroid/os/ParcelFileDescriptor;)V",
+                                &[JValue::Object(child_pfd)],
+                            )
+                            .unwrap();
                         let sock_jh = tokio::spawn(async move {
                             match socket_handler("Parent".to_string(), parent_fd).await {
                                 Ok(_) => {
@@ -296,15 +328,18 @@ pub extern "C" fn Java_com_tandres_isolatedrustapp_MainService_startParent(
             for future in futures {
                 tokio::join!(future);
             }
-
         });
     });
 }
 
 fn bind_service(env: JNIEnv, mainservice: JObject, service_class: JObject) -> Result<(), Error> {
     let intent_class = env.find_class("android/content/Intent")?;
-    let intent = env.new_object(intent_class, "(Landroid/content/Context;Ljava/lang/Class;)V", &[JValue::Object(mainservice), JValue::Object(service_class)])?;
-    
+    let intent = env.new_object(
+        intent_class,
+        "(Landroid/content/Context;Ljava/lang/Class;)V",
+        &[JValue::Object(mainservice), JValue::Object(service_class)],
+    )?;
+
     // mainservice implements ServiceConnection as ServiceConnected ServiceDisconnected in this file
     // 1 here is android.content.Context.BIND_AUTO_CREATE
     let args = &[
@@ -320,7 +355,16 @@ fn bind_service(env: JNIEnv, mainservice: JObject, service_class: JObject) -> Re
 
 fn get_class_loader(env: JNIEnv) -> Result<GlobalRef, Error> {
     let thread_class = env.find_class("java/lang/Thread")?;
-    let current_thread = env.call_static_method(thread_class, "currentThread", "()Ljava/lang/Thread;", &[])?.l()?;
-    let class_loader = env.call_method(current_thread, "getContextClassLoader", "()Ljava/lang/ClassLoader;", &[])?.l()?;
+    let current_thread = env
+        .call_static_method(thread_class, "currentThread", "()Ljava/lang/Thread;", &[])?
+        .l()?;
+    let class_loader = env
+        .call_method(
+            current_thread,
+            "getContextClassLoader",
+            "()Ljava/lang/ClassLoader;",
+            &[],
+        )?
+        .l()?;
     env.new_global_ref(class_loader)
 }
